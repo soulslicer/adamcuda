@@ -44,6 +44,15 @@ ${TORCH_INCLUDE_DIRS}
 #set_property(TARGET adamcuda PROPERTY CXX_STANDARD 11)
 ##########
 
+add_definitions(-DCMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+
+#find_package(PkgConfig REQUIRED)
+#pkg_check_modules(JSONCPP jsoncpp)
+#link_libraries(${JSONCPP_LIBRARIES})
+
+set(3rdparty_libraries -ljsoncpp ${TORCH_LIBRARIES} ${CUDA_LIBRARIES} ${OpenCV_LIBS} ${CERES_LIBRARIES} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARY})
+
 set(CUDA_NVCC_FLAGS -std=c++11 -g -Xcompiler -fexceptions -Xcompiler -fPIC -w)
 file(GLOB SOURCES "src/*.cpp")
 cuda_add_library(MYLIB ${SOURCES} ${ADAMCUDA_SOURCES})
@@ -51,6 +60,7 @@ target_link_libraries( MYLIB ${TORCH_LIBRARIES} ${CUDA_LIBRARIES} )
 
 add_executable(main main.cpp)
 target_link_libraries( main MYLIB )
-target_link_libraries( main ${OpenCV_LIBS} )
-target_link_libraries( main ${CERES_LIBRARIES})
-target_link_libraries( main ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARY})
+target_link_libraries( main ${3rdparty_libraries} )
+
+add_subdirectory(3rdparty/pybind11)
+add_subdirectory(python)

@@ -14,11 +14,73 @@
 
 #include <totalmodel.h>
 
+
 const auto CUDA_NUM_THREADS = 512u;
 unsigned int getNumberCudaBlocks(const unsigned int totalRequired, const unsigned int numberCudaThreads = CUDA_NUM_THREADS);
 
 
+namespace Eigen{
+template<class T>
+void write_binary_vec(const char* filename, const std::vector<T>& vector){
+    std::ofstream out(filename, std::ios::out | std::ios::binary | std::ios::trunc);
+    size_t size = vector.size();
+    out.write((char*) (&size), sizeof(size_t));
+    out.write((char*) vector.data(), vector.size()*sizeof(T) );
+    out.close();
+}
+template<class T>
+void read_binary_vec(const char* filename, std::vector<T>& vector){
+    std::ifstream in(filename, std::ios::in | std::ios::binary);
+    size_t size;
+    in.read((char*) (&size),sizeof(size_t));
+    vector.resize(size);
+    in.read( (char *) vector.data() , vector.size()*sizeof(T));
+    in.close();
+}
 
+template<class Matrix>
+void write_binary(const char* filename, const Matrix& matrix){
+    std::ofstream out(filename, std::ios::out | std::ios::binary | std::ios::trunc);
+    typename Matrix::Index rows=matrix.rows(), cols=matrix.cols();
+    out.write((char*) (&rows), sizeof(typename Matrix::Index));
+    out.write((char*) (&cols), sizeof(typename Matrix::Index));
+    out.write((char*) matrix.data(), rows*cols*sizeof(typename Matrix::Scalar) );
+    out.close();
+}
+template<class Matrix>
+void read_binary(const char* filename, Matrix& matrix){
+    std::ifstream in(filename, std::ios::in | std::ios::binary);
+    typename Matrix::Index rows=0, cols=0;
+    in.read((char*) (&rows),sizeof(typename Matrix::Index));
+    in.read((char*) (&cols),sizeof(typename Matrix::Index));
+    matrix.resize(rows, cols);
+    in.read( (char *) matrix.data() , rows*cols*sizeof(typename Matrix::Scalar) );
+    in.close();
+}
+template<class Matrix>
+void read_binary_special(const char* filename, Matrix& matrix){
+    std::ifstream in(filename, std::ios::in | std::ios::binary);
+    typename Matrix::Index rows=0, cols=0;
+    in.read((char*) (&rows),sizeof(typename Matrix::Index));
+    in.read((char*) (&cols),sizeof(typename Matrix::Index));
+    matrix.resize(rows, cols);
+    for(int r=0; r<rows; r++){
+        for(int c=0; c<cols; c++){
+            float num = 0;
+            in.read(reinterpret_cast<char*>( &num ), sizeof(typename Matrix::Scalar));
+            matrix(r,c) = num;
+        }
+    }
+    in.close();
+}
+} // Eigen::
+
+class TestClass{
+public:
+    TestClass(){
+
+    }
+};
 
 class AdamCuda{
 public:
@@ -120,9 +182,7 @@ public:
         std::cout << "Time difference = " << name << " " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()/1000. <<std::endl;
     }
 
-    void runKernel(const Eigen::MatrixXf& t, const Eigen::MatrixXf& eulers, const Eigen::MatrixXf& bodyshape, const Eigen::MatrixXf& faceshape, bool jac=false);
-
-    void test();
+    void run(const torch::Tensor& t_tensor, const torch::Tensor& eulers_tensor, const torch::Tensor& bodyshape_tensor, const torch::Tensor& faceshape_tensor, bool jac=false);
 
     void setPofBodyWeight(float w);
 
@@ -146,6 +206,8 @@ public:
     double* drdc_d;
     double* drdf_d;
 
+    void loadAdamData();
+
     AdamCuda(){
         at::init();
 
@@ -166,6 +228,9 @@ public:
         allocAndCopyCUDALongVec(DJNB_SELECT_tensor, jnb_full);
         allocAndCopyCUDAFloatVec(dblossdJnb_tensor, dblossdJnb);
         dblossdJnb_tensor.resize_({3, 9});
+
+        cudaMallocHost((void**)&bodyshape_pinned, (NUM_SHAPE_COEFFICIENTS) * sizeof(float));
+        cudaMallocHost((void**)&eulers_pinned, (NUM_POSE_PARAMETERS) * sizeof(float));
 
         std::vector<int> REG_POINTS;
         for(auto p : REG_COCO_POINTS){
@@ -255,9 +320,6 @@ public:
         ploss_tensor = torch::zeros({NUM_OJ, 2}).cuda();
         dplossdOJ_tensor = torch::zeros({NUM_OJ*2, NUM_OJ*3}).cuda();
 
-        //dVtodt_tensor = torch::eye(3).reshape({1,3,3}).repeat({NUM_FAST_VERTICES,1,1}).reshape({NUM_FAST_VERTICES*3, 3}).cuda();
-        //dJndt_tensor = torch::eye(3).reshape({1,3,3}).repeat({NUM_POSE_PARAMETERS,1,1}).reshape({NUM_POSE_PARAMETERS*3, 3}).cuda();
-        //dCocoVdt_tensor = torch::zeros({NUM_COCO_KP*3, 3}).cuda();
         dOJdt_tensor = torch::eye(3).reshape({1,3,3}).repeat({NUM_OJ,1,1}).reshape({NUM_OJ*3, 3}).cuda();
 
         dplossdt_tensor = torch::zeros({NUM_OJ*2, 3}).cuda();
@@ -293,9 +355,15 @@ public:
         streams.emplace_back(at::cuda::getStreamFromPool());
         streams.emplace_back(at::cuda::getStreamFromPool());
         streams.emplace_back(at::cuda::getStreamFromPool());
+
+        // Load
+        loadAdamData();
     }
 
     bool ridigBody = false;
+
+    float* bodyshape_pinned;
+    float* eulers_pinned;
 
     torch::Tensor rigidBodydrdP_tensor;
 
@@ -305,7 +373,6 @@ public:
     torch::Tensor drdc_tensor;
     torch::Tensor drdf_tensor;
 
-    // Slice out? Kernel - dJnbdc [3*3 x c] from dJndc - dJnbdP [3*3 x P] from dJndP
     torch::Tensor dJnbdc_tensor, dJnbdP_tensor;
     torch::Tensor DJNB_SELECT_tensor;
     torch::Tensor dblossdJnb_tensor;
@@ -377,14 +444,10 @@ public:
 
     torch::Tensor ploss_tensor, dplossdOJ_tensor;
 
-    ///////////////
-
     torch::Tensor calib_tensor;
     torch::Tensor proj_truth_tensor, pof_truth_tensor;
 
-    //cudaStream_t stream1, stream2, stream3;
     std::vector<at::cuda::CUDAStream> streams;
-    //at::cuda::CUDAStream* stream1, stream2, stream3;
 
     FKData fkData;
 
@@ -435,23 +498,4 @@ public:
 
 };
 
-
-//void func();
-
-//const dim3 THREADS_PER_BLOCK{1, 1, 2};
-
-
-//template <typename T>
-//__global__ void cudaKernel(float* dataPtr);
-
 #endif // CPPTL_JSON_READER_H_INCLUDED
-
-//Things to store at start:
-//fit_data_.adam.J_mu_
-//fit_data_.adam.dJdc_
-//m_parent[NUM_JOINTS];
-//std::array<std::vector<int>, TotalModel::NUM_JOINTS>& mParentIndexes;
-//workTree
-
-//Setup - Store
-//Pose, Joints
