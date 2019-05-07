@@ -36,6 +36,12 @@ PYBIND11_MODULE(pyadamcuda, m) {
         .def_readwrite("drdP_tensor", &AdamCuda::drdP_tensor)
         .def_readwrite("drdc_tensor", &AdamCuda::drdc_tensor)
         .def_readwrite("drdf_tensor", &AdamCuda::drdf_tensor)
+        .def_readwrite("posepriorloss_tensor", &AdamCuda::posepriorloss_tensor)
+        .def_readwrite("facepriorloss_tensor", &AdamCuda::facepriorloss_tensor)
+        .def_readwrite("shapecoeffloss_tensor", &AdamCuda::shapecoeffloss_tensor)
+        .def_readwrite("dposepriorlossdP_tensor", &AdamCuda::dposepriorlossdP_tensor)
+        .def_readwrite("dshapecoefflossdc_tensor", &AdamCuda::dshapecoefflossdc_tensor)
+        .def_readwrite("dfacepriorlossdf_tensor", &AdamCuda::dfacepriorlossdf_tensor)
         ;
 
     #ifdef VERSION_INFO

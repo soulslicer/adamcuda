@@ -197,16 +197,89 @@ adamCuda.pof_truth_tensor = pof_truth_tensor
 adamCuda.calib_tensor = calib_tensor
 
 # Initial Variables
-t_tensor = torch.tensor(np.array([0,0,200], dtype=np.float32)).cuda()
 eulers_tensor = torch.tensor(np.zeros((62,3), dtype=np.float32)).cuda()
 bodyshape_tensor = torch.tensor(np.zeros((30,1), dtype=np.float32)).cuda()
+t_tensor = torch.tensor(np.array([0,0,200], dtype=np.float32)).cuda()
 faceshape_tensor = torch.tensor(np.zeros((200,1), dtype=np.float32)).cuda()
 
 adamCuda.run(t_tensor, eulers_tensor, bodyshape_tensor, faceshape_tensor, True) # First time is slow
-adamCuda.run(t_tensor, eulers_tensor, bodyshape_tensor, faceshape_tensor, True)
 
-#adamCuda.r_tensor
-#adamCuda.drdt_tensor
-#adamCuda.drdP_tensor
-#adamCuda.drdc_tensor
-#adamCuda.drdf_tensor
+A = torch.cat([adamCuda.drdP_tensor, adamCuda.drdc_tensor, adamCuda.drdt_tensor], 1)
+B = torch.cat([adamCuda.dposepriorlossdP_tensor, torch.zeros(186,30+3).cuda()], 1)
+C = torch.cat([torch.zeros(30,186).cuda(), adamCuda.dshapecoefflossdc_tensor, torch.zeros(30,3).cuda()], 1)
+J = torch.cat([A,B,C], 0)
+r = torch.cat([adamCuda.r_tensor, adamCuda.posepriorloss_tensor, adamCuda.shapecoeffloss_tensor])
+
+delta_b = torch.mm(torch.pinverse(J), r)
+
+
+#print(Jinv.shape)
+#print(r.shape)
+#stop
+#print(Jtrans.shape)
+
+# Ax=b solver
+
+import time
+while 1:
+    torch.cuda.synchronize()
+    start = time.time()
+    ################
+
+
+    adamCuda.run(t_tensor, eulers_tensor, bodyshape_tensor, faceshape_tensor, True)
+
+    # Full
+    A = torch.cat([adamCuda.drdP_tensor, adamCuda.drdc_tensor, adamCuda.drdt_tensor], 1)
+    B = torch.cat([adamCuda.dposepriorlossdP_tensor, torch.zeros(186,30+3).cuda()], 1)
+    C = torch.cat([torch.zeros(30,186).cuda(), adamCuda.dshapecoefflossdc_tensor, torch.zeros(30,3).cuda()], 1)
+    J = torch.cat([A,B,C], 0)
+    r = torch.cat([adamCuda.r_tensor, adamCuda.posepriorloss_tensor, adamCuda.shapecoeffloss_tensor])
+
+
+#    # Just P
+#    A = torch.cat([adamCuda.drdP_tensor], 1)
+#    B = torch.cat([adamCuda.dposepriorlossdP_tensor], 1)
+#    J = torch.cat([A,B], 0)
+#    r = torch.cat([adamCuda.r_tensor, adamCuda.posepriorloss_tensor])
+
+
+
+    delta_b = torch.mm(torch.pinverse(J), r)
+
+
+    #print(adamCuda.r_tensor)
+    #print(delta_b[0:186].view(62,3))
+
+    eulers_tensor = eulers_tensor - delta_b[0:186].view(62,3)
+    #bodyshape_tensor = bodyshape_tensor - delta_b[186:186+30]
+    #t_tensor = t_tensor - delta_b[186+30:186+30+3].view(3)
+
+    ################
+    torch.cuda.synchronize()
+    end = time.time()
+    print(end - start)
+
+    #stop
+
+
+#print(J.shape)
+
+
+#print(adamCuda.drdt_tensor.shape)
+#print(adamCuda.drdP_tensor.shape)
+#print(adamCuda.drdc_tensor.shape)
+
+#print(adamCuda.dposepriorlossdP_tensor.shape)
+#print(adamCuda.dshapecoefflossdc_tensor.shape)
+#(186, 186)
+#(30, 30)
+
+
+#.def_readwrite("posepriorloss_tensor", &AdamCuda::posepriorloss_tensor)
+#.def_readwrite("facepriorloss_tensor", &AdamCuda::facepriorloss_tensor)
+#.def_readwrite("shapecoeffloss_tensor", &AdamCuda::shapecoeffloss_tensor)
+#.def_readwrite("dposepriorlossdP_tensor", &AdamCuda::dposepriorlossdP_tensor)
+#.def_readwrite("dshapecoefflossdc_tensor", &AdamCuda::dshapecoefflossdc_tensor)
+#.def_readwrite("dfacepriorlossdf_tensor", &AdamCuda::dfacepriorlossdf_tensor)
+#;

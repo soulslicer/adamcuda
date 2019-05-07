@@ -352,6 +352,12 @@ public:
         drdc_tensor = torch::zeros({NUM_RESIDUALS, NUM_SHAPE_COEFFICIENTS}).cuda();
         drdf_tensor = torch::zeros({NUM_RESIDUALS, NUM_EXP_BASIS_COEFFICIENTS}).cuda();
 
+        posepriorloss_tensor = torch::zeros({NUM_POSE_PARAMETERS, 1}).cuda();
+        facepriorloss_tensor = torch::zeros({NUM_EXP_BASIS_COEFFICIENTS, 1}).cuda();
+
+        shapecoeffloss_tensor = torch::zeros({NUM_SHAPE_COEFFICIENTS, 1}).cuda();
+        dshapecoefflossdc_tensor = wCoeffRg * torch::eye(NUM_SHAPE_COEFFICIENTS).cuda();
+
         streams.emplace_back(at::cuda::getStreamFromPool());
         streams.emplace_back(at::cuda::getStreamFromPool());
         streams.emplace_back(at::cuda::getStreamFromPool());
@@ -446,6 +452,23 @@ public:
 
     torch::Tensor calib_tensor;
     torch::Tensor proj_truth_tensor, pof_truth_tensor;
+
+    torch::Tensor posePrior_A_tensor;
+    torch::Tensor posePrior_mu_tensor;
+    torch::Tensor facePrior_A_tensor;
+    torch::Tensor facePrior_mu_tensor;
+
+    torch::Tensor posepriorloss_tensor;
+    torch::Tensor facepriorloss_tensor;
+    torch::Tensor shapecoeffloss_tensor;
+
+    torch::Tensor dposepriorlossdP_tensor;
+    torch::Tensor dfacepriorlossdf_tensor;
+    torch::Tensor dshapecoefflossdc_tensor;
+
+    const float wPosePrior = 10.;
+    const float wFacePrior = 100.;
+    const float wCoeffRg = 1e-2;
 
     std::vector<at::cuda::CUDAStream> streams;
 

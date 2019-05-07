@@ -8,6 +8,13 @@
 #undef EIGEN_MPL2_ONLY
 #include <FKDerivative.h>
 
+void printSize(torch::Tensor& tensor){
+    for(auto i : tensor.sizes()){
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+}
+
 void AdamCuda::loadAdamData(){
     std::string path = std::string(CMAKE_SOURCE_DIR) + "/data/";
 
@@ -92,6 +99,39 @@ void AdamCuda::loadAdamData(){
         i++;
     }
     allocAndCopyCUDAFloatMat(m_dVdFaceEx_fast_tensor, m_dVdFaceEx_fast);
+
+    Eigen::MatrixXf posePrior_A;
+    Eigen::MatrixXf posePrior_mu;
+    Eigen::MatrixXf handPrior_A;
+    Eigen::MatrixXf handPrior_mu;
+    Eigen::MatrixXf facePrior_A;
+    Eigen::MatrixXf facePrior_mu;
+    Eigen::read_binary_special(std::string(path + "mat_posePrior_A.dat").c_str(), posePrior_A);
+    Eigen::read_binary_special(std::string(path + "mat_posePrior_mu.dat").c_str(), posePrior_mu);
+    Eigen::read_binary_special(std::string(path + "mat_handPrior_A.dat").c_str(), handPrior_A);
+    Eigen::read_binary_special(std::string(path + "mat_handPrior_mu.dat").c_str(), handPrior_mu);
+    Eigen::read_binary_special(std::string(path + "mat_facePrior_A.dat").c_str(), facePrior_A);
+    Eigen::read_binary_special(std::string(path + "mat_facePrior_mu.dat").c_str(), facePrior_mu);
+    allocAndCopyCUDAFloatMat(facePrior_A_tensor, facePrior_A);
+    allocAndCopyCUDAFloatMat(facePrior_mu_tensor, facePrior_mu);
+
+    const int BODY_COUNT = 22;
+    const int HAND_COUNT = 40;
+    if(BODY_COUNT + HAND_COUNT != AdamCuda::NUM_JOINTS) throw std::runtime_error("Incorrect Joint Size");
+    torch::Tensor bodyPrior_A_tensor;
+    torch::Tensor bodyPrior_mu_tensor;
+    torch::Tensor handPrior_A_tensor;
+    torch::Tensor handPrior_mu_tensor;
+    allocAndCopyCUDAFloatMat(bodyPrior_A_tensor, posePrior_A);
+    allocAndCopyCUDAFloatMat(bodyPrior_mu_tensor, posePrior_mu);
+    allocAndCopyCUDAFloatMat(handPrior_A_tensor, handPrior_A);
+    allocAndCopyCUDAFloatMat(handPrior_mu_tensor, handPrior_mu);
+    bodyPrior_A_tensor = bodyPrior_A_tensor.slice(0, 0, BODY_COUNT*3);
+    posePrior_A_tensor = torch::cat({bodyPrior_A_tensor, handPrior_A_tensor}, 0);
+    posePrior_mu_tensor = torch::cat({bodyPrior_mu_tensor.slice(0, 0, BODY_COUNT*3), handPrior_mu_tensor.slice(0, BODY_COUNT*3, BODY_COUNT*3 + HAND_COUNT*3)});
+
+    dposepriorlossdP_tensor = wPosePrior * posePrior_A_tensor;
+    dfacepriorlossdf_tensor = wFacePrior * facePrior_A_tensor;
 }
 
 ////const auto CUDA_NUM_THREADS = 512u;
@@ -115,14 +155,10 @@ __global__ void dCdB(const float* A, float* dCdB, const int ROWS, const int COLS
     const auto i = (blockIdx.x * blockDim.x) + threadIdx.x; // 20
     const auto j = (blockIdx.y * blockDim.y) + threadIdx.y; // 180 Blocks
 
-
-
     // True jacobian is [20*3, 180*3] - so its NUM*NUM Blocks
     dCdB[i*COLS*NUM*NUM + 0*COLS*3 + j*3 + 0] = A[i*COLS + j];
     dCdB[i*COLS*NUM*NUM + 1*COLS*3 + j*3 + 1] = A[i*COLS + j];
     dCdB[i*COLS*NUM*NUM + 2*COLS*3 + j*3 + 2] = A[i*COLS + j];
-
-
 }
 
 __global__ void dVtodVti(const float* blended_transforms, float* dVtodVti, const int NUM_VERTICES)
@@ -144,7 +180,6 @@ __global__ void dVtodVti(const float* blended_transforms, float* dVtodVti, const
     dVtodVti[i*a_offset + 2*b_offset + i*3 + 0] = blended_transforms[i*12 + 8];
     dVtodVti[i*a_offset + 2*b_offset + i*3 + 1] = blended_transforms[i*12 + 9];
     dVtodVti[i*a_offset + 2*b_offset + i*3 + 2] = blended_transforms[i*12 + 10];
-
 }
 
 __global__ void dVtodTr(const float* Vti, const float* blend_W, float* dVtodTr, const int NUM_JOINTS)
@@ -208,7 +243,6 @@ __global__ void OJkernel(
 
         if(j<NUM_C) dOJdc[i*NUM_C*3 + NUM_C*k + j] = dJndc[INDEX*NUM_C*3 + NUM_C*k + j];
         if(j<NUM_P) dOJdP[i*NUM_P*3 + NUM_P*k + j] = dJndP[INDEX*NUM_P*3 + NUM_P*k + j];
-
     }
 }
 
@@ -216,7 +250,6 @@ __global__ void projRes(float* ploss, float* dplossdOJ, const float* OJ_tensor, 
 {
     const auto i = (blockIdx.x * blockDim.x) + threadIdx.x; // 112
     const auto j = (blockIdx.y * blockDim.y) + threadIdx.y; // 6 // Make this 6
-    // COnsider swapping i,j
 
     const float X = OJ_tensor[i*3 + 0];
     const float Y = OJ_tensor[i*3 + 1];
@@ -282,6 +315,19 @@ __global__ void pofRes(const float* pof_truth, const float* OJ, const int* REG_P
     pof[i*3 + 0] = POFNX;
     pof[i*3 + 1] = POFNY;
     pof[i*3 + 2] = POFNZ;
+
+    if(w==0)
+    {
+        pofloss[i*3 + 0] = 0;
+        pofloss[i*3 + 1] = 0;
+        pofloss[i*3 + 2] = 0;
+
+        theta[i] = 0;
+
+        pof[i*3 + 0] = 0;
+        pof[i*3 + 1] = 0;
+        pof[i*3 + 2] = 0;
+    }
 }
 
 __global__ void pofGrad(const float* pof_truth, const float* pof, const float* theta, const int* REG_POF_A, const int* REG_POF_B, float* dpoflossdpof, float* dpofdOJ, const int NUM_POFS, const int NUM_OJ)
@@ -290,11 +336,16 @@ __global__ void pofGrad(const float* pof_truth, const float* pof, const float* t
     const auto j = (blockIdx.y * blockDim.y) + threadIdx.y; // 10
     if(i >= NUM_POFS) return;
 
-    const float inv_theta = 1/theta[i];
+    float inv_theta = 1/theta[i];
     const float X = pof[i*3 + 0];
     const float Y = pof[i*3 + 1];
     const float Z = pof[i*3 + 2];
     const float w = pof_truth[i*4 + 3];
+
+    if(w == 0)
+    {
+        inv_theta = 0;
+    }
 
     if(j == 0){
         dpoflossdpof[i*NUM_POFS*3*3 + (0*NUM_POFS*3 + 0) + i*3] = w*(X*X*(-inv_theta) + inv_theta);
@@ -540,13 +591,6 @@ cudaError_t checkCuda(cudaError_t result)
   return result;
 }
 
-void printSize(torch::Tensor& tensor){
-    for(auto i : tensor.sizes()){
-        std::cout << i << " ";
-    }
-    std::cout << std::endl;
-}
-
 void AdamCuda::setPofWeightRange(const std::vector<int>& range, float w){
     torch::Tensor range_tensor;
     allocAndCopyCUDAIntVec(range_tensor, range);
@@ -563,7 +607,7 @@ void AdamCuda::setProjWeightRange(const std::vector<int>& range, float w){
 
 void AdamCuda::run(const torch::Tensor& t_tensor, const torch::Tensor& eulers_tensor, const torch::Tensor& bodyshape_tensor, const torch::Tensor& faceshape_tensor, bool jac)
 {
-    startTime();
+    //startTime();
 
     // Copy Bodyshape and Eulers to CPU
     cudaMemcpyAsync(eulers_pinned, eulers_tensor.data_ptr(), NUM_POSE_PARAMETERS * sizeof(float),
@@ -711,10 +755,18 @@ void AdamCuda::run(const torch::Tensor& t_tensor, const torch::Tensor& eulers_te
         cudaDeviceSynchronize();
     }
 
+    // Priors (Inefficient)
+    //posepriorloss_tensor - NUM_POSE_PARAMETERS
+    torch::Tensor eulers_resized = eulers_tensor.reshape({NUM_POSE_PARAMETERS, 1});
+    torch::mm_out(posepriorloss_tensor, posePrior_A_tensor, wPosePrior*(eulers_resized - posePrior_mu_tensor));
+    torch::mm_out(facepriorloss_tensor, facePrior_A_tensor, wFacePrior*(faceshape_tensor - facePrior_mu_tensor));
+    shapecoeffloss_tensor = wCoeffRg * bodyshape_tensor;
+
     // Combine Everything
     ploss_tensor.resize_({NUM_OJ*2});
     pofloss_tensor.resize_({NUM_POFS*3});
     torch::cat_out(r_tensor, {ploss_tensor, pofloss_tensor}, 0);
+    r_tensor.resize_({NUM_OJ*2 + NUM_POFS*3, 1});
     if(jac)
     {
         torch::cat_out(drdt_tensor, {dplossdt_tensor, dpoflossdt_tensor}, 0);
@@ -723,5 +775,5 @@ void AdamCuda::run(const torch::Tensor& t_tensor, const torch::Tensor& eulers_te
         torch::cat_out(drdf_tensor, {dplossdf_tensor, dpoflossdf_tensor}, 0);
     }
 
-    endTime();
+    //endTime();
 }
