@@ -3,8 +3,6 @@ import pyadamcuda as ac
 import numpy as np
 import json
 import sys
-sys.path.insert(0, "../../vizpython/")
-from ogl import TotalModel, init_renderer, ModelFitter, render
 
 adamCuda = ac.AdamCuda()
 
@@ -205,141 +203,11 @@ bodyshape_tensor = torch.tensor(np.zeros((30,1), dtype=np.float32)).cuda()
 t_tensor = torch.tensor(np.array([0,0,200], dtype=np.float32)).cuda()
 faceshape_tensor = torch.tensor(np.zeros((200,1), dtype=np.float32)).cuda()
 
-# Replace with GT
-print(bodyshape_tensor.shape)
-bodyshape_tensor = torch.tensor(
-    np.array(
-        [ 0.0552562,
-        0.412425,
-      -0.0470252,
-       -0.165718,
-        -0.06293,
-       -0.238826,
-      -0.0255841,
-       -0.115981,
-        0.085503,
-      -0.0324623,
-        0.140799,
-      -0.0631495,
-        -0.01443,
-       -0.162148,
-      -0.0962499,
-      -0.0620548,
-      -0.0385898,
-       0.0212009,
-        0.114614,
-       0.0138237,
-      -0.0427892,
-       0.0865332,
-      -0.0449531,
-       -0.153338,
-      -0.0015419,
-       0.0144225,
-       0.0989804,
-      -0.0420409,
-      0.00510176,
-       0.0435357,
-       ],
-    dtype=np.float32).reshape((30,1))
-).cuda()
-
-eulers_tensor = torch.tensor(
-np.array([-3.01415,    -0.179346        ,    0,
-0.0132519,     0.345798     ,       0,
-0.0264662,     0.401444    ,  -0.2864,
-0.0144252,   -0.0206342    , 0.378725,
--0.0203456,    -0.148195   ,  0.258418,
--0.0468287,    -0.339047  ,  -0.357737,
- 0.11979,    -0.305943   , -0.153324,
--0.0181158,    -0.363211  ,   0.435595,
-0.150861,     0.165546    , 0.449133,
--0.203399,     -0.37121   , -0.137572,
--0.0210667,     0.419772  , 0.00469433,
-0.0452792,    0.0902356  ,3.42306e+09,
--0.149927,    0.0323733 ,-3.06617e+10,
-0.00251642,  -2.9699e+10 ,-4.56658e+09,
--0.0519585,  7.52918e+10   ,  -0.55803,
--0.344011, -9.66859e+09   , 0.0363127,
--0.00488746,    -0.563191  ,  -0.137627,
-0.0734914,   -0.0753117   ,  0.048062,
-0.214703,     0.183132    ,-0.147046,
--0.00367736,     0.019821  ,   0.368088,
--0.031131,     0.171088    , 0.499489,
-0.205341,    -0.342254  , -0.0066312,
--0.143348,     0.476123  ,  0.0118036,
-0.00277041,   0.00455904  ,3.82102e+09,
-0.248615,    0.0180552 ,-8.57004e+07,
-0.165191,  8.42095e+09 ,-1.10776e+09,
--0.0301427,  -2.8835e+09  ,   0.169305,
--0.145489,  5.02487e+09  , -0.0998696,
--0.014624,     0.144808 ,  -0.0771728,
-0.0346182,    0.0114562   , -0.174538,
--0.0569818,       0.1317 ,   -0.028642,
-0.0280337,    -0.217909  ,   0.337957,
-0.00550684,   -0.0484898 ,  -0.0846489,
--0.0569818,    -0.331105 ,  -0.0837079,
-0.0280337,   -0.0749575  ,  0.0185276,
-0.00550684,    0.0832011, -2.10585e+09,
-0.320328,   -0.0797946 , 5.95051e+09,
--0.0230309, -5.28178e+08 , 2.07447e+09,
--0.0462752, -1.19436e+10 ,   0.0692297,
--0.0431869, -7.98002e+08  ,  -0.180681,
-0.0170632,    0.0467034  ,  -0.164143,
-0.0375706,    0.0562755  , -0.0732508,
--0.0539613,     0.185711 ,   0.0574612,
--0.037179,   -0.0926864  ,   0.556806,
--0.0997789,   -0.0963176 ,  -0.0686042,
--0.507068,    -0.389765  ,  -0.139368,
--0.0311673,   -0.0649694 ,   0.0574602,
--0.0352542,     0.115794 ,           0,
--0.344843,     -0.12905  ,          0,
-0.240938,            0   ,         0,
-  1.0954,            0   ,  0.229368,
--0.24744,            0  ,  -0.208228,
--0.443269,     0.256082 , -0.00925765,
--1.00209  ,  0.0917302  ,  -0.286333,
--0.069568 ,    0.075524  ,  -0.133347,
-0.165708  ,   -0.30355  ,   0.259086,
--0.05182  , 0.00858847  ,  0.0755826,
--0.11223  , -0.0913147  ,   0.193298,
--0.329668 ,   0.0994662 ,    0.166849,
- 0.17779  ,  -0.163465  ,          0,
-0.241269  , -0.0678174   ,         0,
--0.0161704 ,           0,            0], dtype=np.float32).reshape((62,3))).cuda()
-
-def flip(data):
-    newdata = []
-    for i in range(0, data.shape[1]):
-        for j in range(0, data.shape[0]):
-            newdata.append(float(data[j,i]))
-    return torch.tensor(np.array(newdata, dtype=np.float32).reshape(data.shape)).cuda()
-
-#adamCuda.run(t_tensor, eulers_tensor, bodyshape_tensor, faceshape_tensor, True) # First time is slow
-#A = torch.cat([adamCuda.drdP_tensor, adamCuda.drdc_tensor, adamCuda.drdt_tensor], 1)
-#B = torch.cat([adamCuda.dposepriorlossdP_tensor, torch.zeros(186,30+3).cuda()], 1)
-#C = torch.cat([torch.zeros(30,186).cuda(), adamCuda.dshapecoefflossdc_tensor, torch.zeros(30,3).cuda()], 1)
-#J = torch.cat([A,B,C], 0)
-#r = torch.cat([adamCuda.r_tensor, adamCuda.posepriorloss_tensor, adamCuda.shapecoeffloss_tensor])
-#delta_b = torch.mm(torch.pinverse(J), r)
-
-
-#print(Jinv.shape)
-#print(r.shape)
-#stop
-#print(Jtrans.shape)
-
-# Ax=b solver
+# Some empty jacobians
 dposepriorlossdc_tensor = torch.zeros(186,30).cuda()
 dposepriorlossdct_tensor = torch.zeros(186,30+3).cuda()
 dshapecoefflossdP_tensor = torch.zeros(30,186).cuda()
 dshapecoefflossdt_tensor = torch.zeros(30,3).cuda()
-
-# Vizusaliation
-init_renderer()
-total_model = TotalModel()
-model_fitter = ModelFitter(total_model)
-
-eulers_tensor += 0.05
 
 import time
 i = -1
@@ -358,8 +226,7 @@ while 1:
     # Disable Proj
     adamCuda.proj_truth_tensor[:, 2] = 0
 
-    #adamCuda.pof_truth_tensor[:, 3] = 0
-
+    # Compute Res and Jacob
     adamCuda.run(t_tensor, eulers_tensor, bodyshape_tensor, faceshape_tensor, True)
 
     # No Translation
@@ -369,64 +236,15 @@ while 1:
     J = torch.cat([A,B,C], 0)
     r = torch.cat([adamCuda.r_tensor[112*2:112*2+53*3, :], adamCuda.posepriorloss_tensor, adamCuda.shapecoeffloss_tensor])
 
-    A = torch.cat([adamCuda.drdP_tensor, adamCuda.drdc_tensor], 1)
-    X = torch.cat([torch.zeros(30,186).cuda(), adamCuda.dshapecoefflossdc_tensor], 1)
-    J = torch.cat([A, X], 0)
-    r = torch.cat([adamCuda.r_tensor, adamCuda.shapecoeffloss_tensor])
-
-### CHECK THE POSE PRIOR IS ACTUALLY CORRECT
-
     delta_b, qr = torch.gels(r, J)
-    #delta_b = torch.mm(torch.pinverse(J), r)
 
-    lr = 0.00000001
-    #lr = 1
+    #lr = 0.00000001
+    lr = 1
     eulers_tensor = eulers_tensor - lr*delta_b[0:186].view(62,3)
-    #bodyshape_tensor = bodyshape_tensor - lr*delta_b[186:186+30]
+    bodyshape_tensor = bodyshape_tensor - lr*delta_b[186:186+30]
 
     error = torch.abs(torch.sum(adamCuda.r_tensor))
-
-    #print(delta_b[0:186].view(62,3))
-    #stop
-
-    #if error < 100:
-#    model_fitter.setParams(bodyshape_tensor, flip(eulers_tensor), faceshape_tensor)
-#    verts = model_fitter.reconstructTorch()
-#    total_model.obj.vertices = verts.detach().cpu().numpy().tolist()
-#    total_model.obj.render()
-#    render([total_model.obj])
-
-
-#    print(adamCuda.r_tensor)
-#    stop
-
     print(error)
-
-    #if i == 1: stop
-
-
-    ####
-
-#    # Full
-#    A = torch.cat([adamCuda.drdP_tensor, adamCuda.drdc_tensor, adamCuda.drdt_tensor], 1)
-#    B = torch.cat([adamCuda.dposepriorlossdP_tensor, dposepriorlossdct_tensor], 1)
-#    C = torch.cat([dshapecoefflossdP_tensor, adamCuda.dshapecoefflossdc_tensor, dshapecoefflossdt_tensor], 1)
-#    J = torch.cat([A,B,C], 0)
-#    r = torch.cat([adamCuda.r_tensor, adamCuda.posepriorloss_tensor, adamCuda.shapecoeffloss_tensor])
-
-
-
-#    delta_b = torch.mm(torch.pinverse(J), r)
-
-
-#    #print(delta_b[0:186].view(62,3))
-
-#    eulers_tensor = eulers_tensor - delta_b[0:186].view(62,3)
-#    bodyshape_tensor = bodyshape_tensor - delta_b[186:186+30]
-#    #t_tensor = t_tensor - delta_b[186+30:186+30+3].view(3)
-
-#    print(eulers_tensor)
-#    stop
 
     ################
     torch.cuda.synchronize()
@@ -434,25 +252,3 @@ while 1:
     #print(end - start)
 
     #stop
-
-
-#print(J.shape)
-
-
-#print(adamCuda.drdt_tensor.shape)
-#print(adamCuda.drdP_tensor.shape)
-#print(adamCuda.drdc_tensor.shape)
-
-#print(adamCuda.dposepriorlossdP_tensor.shape)
-#print(adamCuda.dshapecoefflossdc_tensor.shape)
-#(186, 186)
-#(30, 30)
-
-
-#.def_readwrite("posepriorloss_tensor", &AdamCuda::posepriorloss_tensor)
-#.def_readwrite("facepriorloss_tensor", &AdamCuda::facepriorloss_tensor)
-#.def_readwrite("shapecoeffloss_tensor", &AdamCuda::shapecoeffloss_tensor)
-#.def_readwrite("dposepriorlossdP_tensor", &AdamCuda::dposepriorlossdP_tensor)
-#.def_readwrite("dshapecoefflossdc_tensor", &AdamCuda::dshapecoefflossdc_tensor)
-#.def_readwrite("dfacepriorlossdf_tensor", &AdamCuda::dfacepriorlossdf_tensor)
-#;

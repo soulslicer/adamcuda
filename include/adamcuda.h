@@ -466,9 +466,9 @@ public:
     torch::Tensor dfacepriorlossdf_tensor;
     torch::Tensor dshapecoefflossdc_tensor;
 
-    const float wPosePrior = 10.;
-    const float wFacePrior = 100.;
-    const float wCoeffRg = 1e-2;
+    const float wPosePrior = sqrt(10.);
+    const float wFacePrior = sqrt(100.);
+    const float wCoeffRg = sqrt(1e-2);
 
     std::vector<at::cuda::CUDAStream> streams;
 

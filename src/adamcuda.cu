@@ -130,6 +130,15 @@ void AdamCuda::loadAdamData(){
     posePrior_A_tensor = torch::cat({bodyPrior_A_tensor, handPrior_A_tensor}, 0);
     posePrior_mu_tensor = torch::cat({bodyPrior_mu_tensor.slice(0, 0, BODY_COUNT*3), handPrior_mu_tensor.slice(0, BODY_COUNT*3, BODY_COUNT*3 + HAND_COUNT*3)});
 
+    torch::Tensor A = posePrior_A_tensor.slice(0, 0, 22*3).slice(1, 0, 22*3);
+    torch::Tensor B = posePrior_A_tensor.slice(0, 0, 22*3).slice(1, 22*3, 22*3 + 40*3)*0;
+    torch::Tensor C = posePrior_A_tensor.slice(0, 22*3, 22*3 + 40*3).slice(1, 0, 22*3)*0;
+    torch::Tensor D = posePrior_A_tensor.slice(0, 22*3, 22*3 + 40*3).slice(1, 22*3, 22*3 + 40*3);
+    torch::Tensor AB = torch::cat({A,B}, 1);
+    torch::Tensor CD = torch::cat({C,D}, 1);
+    torch::Tensor ABCD = torch::cat({AB,CD}, 0);
+    posePrior_A_tensor = ABCD.clone();
+
     dposepriorlossdP_tensor = wPosePrior * posePrior_A_tensor;
     dfacepriorlossdf_tensor = wFacePrior * facePrior_A_tensor;
 }
